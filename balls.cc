@@ -31,13 +31,9 @@ GLuint CreateRenderTexture(int width, int height) {
 }
 
 void SetRenderTarget(GLuint framebuffer, GLuint color_tex_id) {
-  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-  assert(!glGetError());
-  printf("color_tex_id = %d\n", color_tex_id);
+  glBindFramebuffer( GL_FRAMEBUFFER, framebuffer );
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
                          color_tex_id, 0);
-  printf("err0r = %d\n", glGetError());
-  assert(false);
   assert(!glGetError());
   glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                             GL_RENDERBUFFER, 0);
@@ -48,7 +44,7 @@ void SetRenderTarget(GLuint framebuffer, GLuint color_tex_id) {
 }
 
 void Clear() {
-  glClearColor(0, 0, 0, 0);
+  glClearColor(1.0, 0, 1.0, 0);
   glClearDepth(0);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
@@ -74,6 +70,16 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  // Configure OpenGL.
+  std::unique_ptr<GLWindow> win(CreateGLWindow(800, 600, "balls"));
+  glXMakeCurrent(win->dpy, win->win, win->ctx);
+  glEnable(GL_TEXTURE_2D);
+  GLenum err = glewInit();
+  if (GLEW_OK != err) {
+    printf("GLEW is not dry\n");
+    return 1;
+  }
+
   // Create a texture for rendering.
   ovrSizei recommened_tex0_size = ovrHmd_GetFovTextureSize(
       hmd, ovrEye_Left, hmd_desc.DefaultEyeFov[0], 1.0f);
@@ -85,16 +91,6 @@ int main(int argc, char** argv) {
                                   recommened_tex1_size.h);
   GLuint render_tex_id = CreateRenderTexture(render_target_size.w,
                                              render_target_size.h);
-
-  // Configure OpenGL.
-  std::unique_ptr<GLWindow> win(CreateGLWindow(800, 600, "balls"));
-  glXMakeCurrent(win->dpy, win->win, win->ctx);
-
-  GLenum err = glewInit();
-  if (GLEW_OK != err) {
-    printf("GLEW is not dry\n");
-    return 1;
-  }
   
   GLuint framebuffer;
   glGenFramebuffers(1, &framebuffer);
@@ -129,30 +125,38 @@ int main(int argc, char** argv) {
       eye_render_desc[1].DistortedViewport;
   
   // Render a frame.
-  ovrFrameTiming hmd_frame_timing = ovrHmd_BeginFrame(hmd, 0);
-  SetRenderTarget(framebuffer, render_tex_id);
-  Clear();
-  for (int eyeIndex = 0; eyeIndex < ovrEye_Count; eyeIndex++) {
-    ovrEyeType eye = hmd_desc.EyeRenderOrder[eyeIndex];
-    ovrPosef eye_pose = ovrHmd_BeginEyeRender(hmd, eye);
-    Quatf orientation = Quatf(eye_pose.Orientation);
-    Matrix4f proj = ovrMatrix4f_Projection(eye_render_desc[eye].Fov,
-                                           0.01f, 10000.0f, true);
-    // Test logic - assign quaternion result directly to view; TBD: Add translation.
-    Matrix4f view = Matrix4f(orientation.Inverted());
-    //        *Matrix4f::Translation(-eye_pose);
-    SetViewport(render_target_size.h, eye_render_desc[eye].DistortedViewport);
-    //pRender->SetProjection(proj);
-    //pRoomScene->Render(pRender, Matrix4f::Translation(EyeRenderDesc[eye].ViewAdjust) * view);
+  while (true) {
+    ovrFrameTiming hmd_frame_timing = ovrHmd_BeginFrame(hmd, 0);
+    SetRenderTarget(framebuffer, render_tex_id);
+    Clear();
+    for (int eyeIndex = 0; eyeIndex < ovrEye_Count; eyeIndex++) {
+      ovrEyeType eye = hmd_desc.EyeRenderOrder[eyeIndex];
+      ovrPosef eye_pose = ovrHmd_BeginEyeRender(hmd, eye);
+      Quatf orientation = Quatf(eye_pose.Orientation);
+      Matrix4f proj = ovrMatrix4f_Projection(eye_render_desc[eye].Fov,
+                                             0.01f, 10000.0f, true);
+      // Test logic - assign quaternion result directly to view; TBD: Add translation.
+      Matrix4f view = Matrix4f(orientation.Inverted());
+      //        *Matrix4f::Translation(-eye_pose);
+      SetViewport(render_target_size.h, eye_render_desc[eye].DistortedViewport);
+      //pRender->SetProjection(proj);
+      //pRoomScene->Render(pRender, Matrix4f::Translation(EyeRenderDesc[eye].ViewAdjust) * view);
+      
+      // draw some shit.
+      glColor3f(0.0, 1.0, 0.0);
+      glBegin(GL_TRIANGLES);
+      glVertex3f(-500, -500, +50);
+      glVertex3f(0, 500, +50);
+      glVertex3f(500, -500, +50);
+      glEnd();
+    
+    
+      ovrHmd_EndEyeRender(hmd, eye, eye_pose, &eye_texture[eye].Texture);
+    }
 
-    // draw some shit.
-    
-    
-    ovrHmd_EndEyeRender(hmd, eye, eye_pose, &eye_texture[eye].Texture);
+    // Let OVR do distortion rendering, Present and flush/sync.
+    ovrHmd_EndFrame(hmd);
   }
-  
-  // Let OVR do distortion rendering, Present and flush/sync.
-  ovrHmd_EndFrame(hmd);
 
   // Shutdown.
   glDeleteFramebuffers(1, &framebuffer);
