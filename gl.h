@@ -1,7 +1,8 @@
 #include <string>
 
-#include <GL/gl.h>
-#include <GL/glx.h>
+//#include <GL/gl.h>
+//#include <GL/glx.h>
+#include <GL/glew.h>
 
 // A structure capturing all the state for an OpenGL window through GLX.
 struct GLWindow {

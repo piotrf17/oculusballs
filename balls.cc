@@ -1,6 +1,9 @@
 #include <algorithm>
+#include <cassert>
 #include <cstdio>
 #include <memory>
+
+#include <GL/glew.h>
 
 #define OVR_OS_LINUX
 
@@ -12,81 +15,48 @@
 
 using namespace OVR;
 
-/*
-Texture* CreateTexture(int format, int width, int height, const void* data, int mipcount)
-{
-    GLenum   glformat, gltype = GL_UNSIGNED_BYTE;
-    switch(format & Texture_TypeMask)
-    {
-    case Texture_RGBA:  glformat = GL_RGBA; break;
-    case Texture_R:     glformat = GL_RED; break;
-    case Texture_Depth: glformat = GL_DEPTH_COMPONENT32F; gltype = GL_FLOAT; break;
-    case Texture_DXT1:  glformat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT; break;
-    case Texture_DXT3:  glformat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT; break;
-    case Texture_DXT5:  glformat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT; break;
-    default:
-        return NULL;
-    }
-    Texture* NewTex = new Texture(this, width, height);
-    glBindTexture(GL_TEXTURE_2D, NewTex->TexId);
-    OVR_ASSERT(!glGetError());
-    
-    if (format & Texture_Compressed)
-    {
-        const unsigned char* level = (const unsigned char*)data;
-        int w = width, h = height;
-        for (int i = 0; i < mipcount; i++)
-        {
-            int mipsize = GetTextureSize(format, w, h);
-            glCompressedTexImage2D(GL_TEXTURE_2D, i, glformat, w, h, 0, mipsize, level);
-
-            level += mipsize;
-            w >>= 1;
-            h >>= 1;
-            if (w < 1) w = 1;
-            if (h < 1) h = 1;
-        }
-    }
-    else if (format & Texture_Depth)
-        glTexImage2D(GL_TEXTURE_2D, 0, glformat, width, height, 0, GL_DEPTH_COMPONENT, gltype, data);
-    else
-        glTexImage2D(GL_TEXTURE_2D, 0, glformat, width, height, 0, glformat, gltype, data);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    if (format == (Texture_RGBA|Texture_GenMipmaps)) // not render target
-    {
-        int srcw = width, srch = height;
-        int level = 0;
-        UByte* mipmaps = NULL;
-        do
-        {
-            level++;
-            int mipw = srcw >> 1; if (mipw < 1) mipw = 1;
-            int miph = srch >> 1; if (miph < 1) miph = 1;
-            if (mipmaps == NULL)
-                mipmaps = (UByte*)OVR_ALLOC(mipw * miph * 4);
-            FilterRgba2x2(level == 1 ? (const UByte*)data : mipmaps, srcw, srch, mipmaps);
-            glTexImage2D(GL_TEXTURE_2D, level, glformat, mipw, miph, 0, glformat, gltype, mipmaps);
-            srcw = mipw;
-            srch = miph;
-        } while (srcw > 1 || srch > 1);
-        if (mipmaps)
-            OVR_FREE(mipmaps);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, level);
-    }
-    else
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mipcount-1);
-    }
-
-    OVR_ASSERT(!glGetError());
-    return NewTex;
+GLuint CreateRenderTexture(int width, int height) {
+  GLuint tex_id;
+  glGenTextures(1, &tex_id);
+  glBindTexture(GL_TEXTURE_2D, tex_id);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+               GL_UNSIGNED_BYTE, nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                  GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+  return tex_id;
 }
-*/
+
+void SetRenderTarget(GLuint framebuffer, GLuint color_tex_id) {
+  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  assert(!glGetError());
+  printf("color_tex_id = %d\n", color_tex_id);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                         color_tex_id, 0);
+  printf("err0r = %d\n", glGetError());
+  assert(false);
+  assert(!glGetError());
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                            GL_RENDERBUFFER, 0);
+  GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+  if (status != GL_FRAMEBUFFER_COMPLETE) {
+    printf("Framebu, status=%d\n", status);
+  }
+}
+
+void Clear() {
+  glClearColor(0, 0, 0, 0);
+  glClearDepth(0);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void SetViewport(int wh, const Recti& vp) {
+  glViewport(vp.x, wh - vp.y - vp.h, vp.w, vp.h);
+}
+
 
 int main(int argc, char** argv) {
   // Initializes LibOVR.
@@ -104,27 +74,30 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  /*
-  // Configure Stereo settings.
-  ovrSizei recommenedTex0Size = ovrHmd_GetFovTextureSize(
-      hmd, ovrEye_Left, hmdDesc.DefaultEyeFov[0], 1.0f);
-  ovrSizei recommenedTex1Size = ovrHmd_GetFovTextureSize(
-      hmd, ovrEye_Right, hmdDesc.DefaultEyeFov[1], 1.0f);
-  ovrSizei renderTargetSize;
-  renderTargetSize.w = recommenedTex0Size.w + recommenedTex1Size.w;
-  renderTargetSize.h = std::max(recommenedTex0Size.h, recommenedTex1Size.h);
-  const int eyeRenderMultisample = 1;
-  pRendertargetTexture = pRender->CreateTexture(
-      Texture_RGBA | Texture_RenderTarget | eyeRenderMultisample,
-      renderTargetSize.Width, renderTargetSize.Height, NULL);
-  // The actual RT size may be different due to HW limits.
-  renderTargetSize.w = pRendertargetTexture->GetWidth();
-  renderTargetSize.h = pRendertargetTexture->GetHeight();
-  */
+  // Create a texture for rendering.
+  ovrSizei recommened_tex0_size = ovrHmd_GetFovTextureSize(
+      hmd, ovrEye_Left, hmd_desc.DefaultEyeFov[0], 1.0f);
+  ovrSizei recommened_tex1_size = ovrHmd_GetFovTextureSize(
+      hmd, ovrEye_Right, hmd_desc.DefaultEyeFov[1], 1.0f);
+  ovrSizei render_target_size;
+  render_target_size.w = recommened_tex0_size.w + recommened_tex1_size.w;
+  render_target_size.h = std::max(recommened_tex0_size.h,
+                                  recommened_tex1_size.h);
+  GLuint render_tex_id = CreateRenderTexture(render_target_size.w,
+                                             render_target_size.h);
 
   // Configure OpenGL.
   std::unique_ptr<GLWindow> win(CreateGLWindow(800, 600, "balls"));
   glXMakeCurrent(win->dpy, win->win, win->ctx);
+
+  GLenum err = glewInit();
+  if (GLEW_OK != err) {
+    printf("GLEW is not dry\n");
+    return 1;
+  }
+  
+  GLuint framebuffer;
+  glGenFramebuffers(1, &framebuffer);
 
   // Configure Oculus OpenGL integration.
   ovrGLConfig cfg;
@@ -144,7 +117,45 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  // Setup eye textures.
+  ovrGLTexture eye_texture[2];
+  eye_texture[0].OGL.Header.API = ovrRenderAPI_OpenGL;
+  eye_texture[0].OGL.Header.TextureSize = render_target_size;
+  eye_texture[0].OGL.Header.RenderViewport =
+      eye_render_desc[0].DistortedViewport;
+  eye_texture[0].OGL.TexId = render_tex_id;
+  eye_texture[1] = eye_texture[0];
+  eye_texture[1].OGL.Header.RenderViewport =
+      eye_render_desc[1].DistortedViewport;
+  
+  // Render a frame.
+  ovrFrameTiming hmd_frame_timing = ovrHmd_BeginFrame(hmd, 0);
+  SetRenderTarget(framebuffer, render_tex_id);
+  Clear();
+  for (int eyeIndex = 0; eyeIndex < ovrEye_Count; eyeIndex++) {
+    ovrEyeType eye = hmd_desc.EyeRenderOrder[eyeIndex];
+    ovrPosef eye_pose = ovrHmd_BeginEyeRender(hmd, eye);
+    Quatf orientation = Quatf(eye_pose.Orientation);
+    Matrix4f proj = ovrMatrix4f_Projection(eye_render_desc[eye].Fov,
+                                           0.01f, 10000.0f, true);
+    // Test logic - assign quaternion result directly to view; TBD: Add translation.
+    Matrix4f view = Matrix4f(orientation.Inverted());
+    //        *Matrix4f::Translation(-eye_pose);
+    SetViewport(render_target_size.h, eye_render_desc[eye].DistortedViewport);
+    //pRender->SetProjection(proj);
+    //pRoomScene->Render(pRender, Matrix4f::Translation(EyeRenderDesc[eye].ViewAdjust) * view);
+
+    // draw some shit.
+    
+    
+    ovrHmd_EndEyeRender(hmd, eye, eye_pose, &eye_texture[eye].Texture);
+  }
+  
+  // Let OVR do distortion rendering, Present and flush/sync.
+  ovrHmd_EndFrame(hmd);
+
   // Shutdown.
+  glDeleteFramebuffers(1, &framebuffer);
   DestroyGLWindow(win.get());
   ovrHmd_Destroy(hmd);
   ovr_Shutdown();

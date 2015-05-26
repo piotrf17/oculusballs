@@ -8,7 +8,7 @@ LIBOVR_BASE ?= ../OculusSDK/LibOVR
 
 INCLUDES ?= -I$(LIBOVR_BASE)
 
-LIBS ?= $(LIBOVR_BASE)/Lib/Linux/Debug/x86_64/libovr.a -ludev -lpthread -lGL -lX11 -lXrandr
+LIBS ?= $(LIBOVR_BASE)/Lib/Linux/Debug/x86_64/libovr.a -ludev -lpthread -lGL -lX11 -lXrandr -lGLEW
 
 FLAGS ?= -std=c++11 -g3
 
